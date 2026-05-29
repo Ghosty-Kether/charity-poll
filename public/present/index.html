@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Results — Charity Poll</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root { --primary: #e85d04; }
+
+    html, body {
+      height: 100%; background: #ffffff;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      color: #111827; overflow: hidden;
+    }
+
+    body { display: flex; flex-direction: column; }
+
+    /* ── Top bar ─────────────────────────────────────────────────────────── */
+    .top-bar {
+      display: flex; align-items: center; justify-content: center;
+      padding: .65rem 1.5rem; border-bottom: 1px solid #f3f4f6;
+      flex-shrink: 0; position: relative;
+    }
+
+    .join-pill {
+      background: #f3f4f6; border-radius: 99px;
+      padding: .4rem 1.1rem;
+      font-size: .85rem; color: #6b7280;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .join-pill .code {
+      background: #fff; border: 1px solid #e5e7eb;
+      border-radius: 6px; padding: .15rem .55rem;
+      font-weight: 800; font-size: .9rem; letter-spacing: .12em; color: #111827;
+    }
+
+    .top-right {
+      position: absolute; right: 1.25rem;
+      display: flex; align-items: center; gap: .75rem;
+    }
+    .live-dot {
+      display: flex; align-items: center; gap: .35rem;
+      font-size: .78rem; font-weight: 600; color: #6b7280;
+    }
+    .live-dot::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: #9ca3af; display: inline-block; transition: background .3s;
+    }
+    .live-dot.online::before { background: #22c55e; }
+    #participants-badge {
+      font-size: .78rem; color: #6b7280;
+    }
+
+    /* ── Question area ───────────────────────────────────────────────────── */
+    .question-area {
+      padding: 1.75rem 3.5rem .5rem; flex-shrink: 0;
+    }
+    #question-label {
+      font-size: .75rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--primary); margin-bottom: .5rem;
+    }
+    #question-title {
+      font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+      font-weight: 700; line-height: 1.2; color: #111827;
+    }
+
+    /* ── Chart area ──────────────────────────────────────────────────────── */
+    .chart-area {
+      flex: 1; padding: 0 2.5rem; position: relative; min-height: 0;
+    }
+
+    /* ── Bottom bar ──────────────────────────────────────────────────────── */
+    .bottom-bar {
+      padding: .6rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid #f3f4f6; flex-shrink: 0;
+      font-size: .8rem; color: #9ca3af;
+    }
+    #total-votes { font-weight: 700; font-size: .9rem; color: #374151; }
+    #event-name-footer { font-weight: 600; color: #6b7280; }
+
+    /* ── Waiting overlay ─────────────────────────────────────────────────── */
+    #waiting-overlay {
+      position: absolute; inset: 0; background: #fff;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.25rem; z-index: 50;
+    }
+    #waiting-overlay.hidden { display: none; }
+    #waiting-overlay .icon { font-size: 4rem; animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+    #waiting-overlay h1 { font-size: 2rem; font-weight: 700; color: #111827; }
+    #waiting-overlay p  { color: #6b7280; font-size: 1rem; }
+  </style>
+</head>
+<body>
+
+<!-- Waiting overlay -->
+<div id="waiting-overlay">
+  <div class="icon">🎉</div>
+  <h1>Waiting for the host…</h1>
+  <p>The first question will appear here shortly.</p>
+</div>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <div class="join-pill">
+    Join at <strong id="join-host">localhost:3000</strong>
+    &nbsp;|&nbsp; use code <span class="code" id="room-code-display">——</span>
+  </div>
+  <div class="top-right">
+    <span id="participants-badge">0 online</span>
+    <span class="live-dot" id="live-dot">Live</span>
+  </div>
+</div>
+
+<!-- Question -->
+<div class="question-area">
+  <div id="question-label"></div>
+  <div id="question-title">—</div>
+</div>
+
+<!-- Chart -->
+<div class="chart-area">
+  <canvas id="results-chart"></canvas>
+</div>
+
+<!-- Bottom bar -->
+<div class="bottom-bar">
+  <div id="total-votes"></div>
+  <div id="event-name-footer"></div>
+</div>
+
+<script>
+// ── Colors ────────────────────────────────────────────────────────────────────
+const COLORS = ['#6168E8','#F07470','#1E3A8A','#F59E0B','#10B981','#EC4899'];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let publicState    = null;
+let activeQuestion = null;
+let chart          = null;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const waitingOverlay = document.getElementById('waiting-overlay');
+const questionLabel  = document.getElementById('question-label');
+const questionTitle  = document.getElementById('question-title');
+const totalVotesEl   = document.getElementById('total-votes');
+const participantEl  = document.getElementById('participants-badge');
+const liveDot        = document.getElementById('live-dot');
+const roomCodeEl     = document.getElementById('room-code-display');
+const joinHostEl     = document.getElementById('join-host');
+const eventNameFtr   = document.getElementById('event-name-footer');
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async function init() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (cfg.event.primaryColor) document.documentElement.style.setProperty('--primary', cfg.event.primaryColor);
+    if (cfg.event.name)         eventNameFtr.textContent = cfg.event.name;
+    roomCodeEl.textContent = cfg.roomCode;
+    document.title = `Live Results — ${cfg.event.name || 'Charity Poll'}`;
+  } catch {}
+
+  try {
+    const qr = await fetch('/api/qr').then(r => r.json());
+    const url = new URL(qr.joinUrl);
+    joinHostEl.textContent = url.hostname + (url.port && !['80','443'].includes(url.port) ? `:${url.port}` : '');
+    roomCodeEl.textContent = qr.roomCode;
+  } catch {}
+
+  connectSocket();
+})();
+
+// ── Socket ────────────────────────────────────────────────────────────────────
+function connectSocket() {
+  const socket = io({ reconnectionAttempts: Infinity });
+
+  socket.on('connect',    () => liveDot.classList.add('online'));
+  socket.on('disconnect', () => liveDot.classList.remove('online'));
+
+  socket.on('state', (state) => {
+    publicState    = state;
+    activeQuestion = state.questions.find(q => q.id === state.activeQuestionId) || null;
+    render();
+  });
+
+  socket.on('question-changed', ({ activeQuestionId, question }) => {
+    if (publicState) publicState.activeQuestionId = activeQuestionId;
+    activeQuestion = question || null;
+    render();
+  });
+
+  socket.on('vote-update', ({ questionId, votes, totalVotes }) => {
+    if (activeQuestion?.id === questionId) {
+      activeQuestion.votes      = votes;
+      activeQuestion.totalVotes = totalVotes;
+      updateChart();
+      updateFooter();
+    }
+  });
+
+  socket.on('participant-count', ({ count }) => {
+    participantEl.textContent = `${count} online`;
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  if (!activeQuestion) {
+    waitingOverlay.classList.remove('hidden');
+    return;
+  }
+  waitingOverlay.classList.add('hidden');
+
+  if (publicState) {
+    const qs  = publicState.questions;
+    const idx = qs.findIndex(q => q.id === activeQuestion.id);
+    questionLabel.textContent = idx >= 0 ? `Question ${idx + 1} of ${qs.length}` : '';
+  }
+  questionTitle.textContent = activeQuestion.title;
+
+  updateChart();
+  updateFooter();
+}
+
+function updateFooter() {
+  if (!activeQuestion) return;
+  const total = activeQuestion.totalVotes ?? Object.values(activeQuestion.votes).reduce((a,b) => a+b, 0);
+  totalVotesEl.textContent = `${total} vote${total !== 1 ? 's' : ''}`;
+}
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+
+// Plugin: draw vote counts above each bar
+const countPlugin = {
+  id: 'countPlugin',
+  afterDatasetsDraw(ch) {
+    const { ctx, data, scales: { x, y } } = ch;
+    const vals = data.datasets[0].data;
+    ctx.save();
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle    = '#111827';
+    ctx.font         = `bold ${Math.max(16, Math.min(32, Math.floor(ch.width / (vals.length * 3))))}px system-ui, sans-serif`;
+
+    vals.forEach((v, i) => {
+      if (v === 0) return;          // hide zero labels
+      const xPos = x.getPixelForValue(i);
+      const yPos = y.getPixelForValue(v);
+      ctx.fillText(String(v), xPos, yPos - 8);
+    });
+    ctx.restore();
+  },
+};
+
+function getOrCreateChart() {
+  if (chart) return chart;
+  const ctx = document.getElementById('results-chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type:    'bar',
+    plugins: [countPlugin],
+    data: {
+      labels:   [],
+      datasets: [{
+        data:            [],
+        backgroundColor: COLORS,
+        borderRadius:    10,
+        borderSkipped:   false,
+      }],
+    },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      layout:  { padding: { top: 55, left: 10, right: 10, bottom: 8 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      scales: {
+        x: {
+          grid:   { display: false },
+          border: { display: false },
+          ticks:  {
+            font:         { size: 18, weight: '600' },
+            color:        '#111827',
+            maxRotation:  0,
+            callback(_, i) {
+              const lbl = this.getLabelForValue(i) || '';
+              // Wrap at ~16 chars per line so long labels don't truncate
+              if (lbl.length <= 16) return lbl;
+              const words = lbl.split(' ');
+              const lines = []; let line = '';
+              for (const w of words) {
+                if ((line + ' ' + w).trim().length > 16) { lines.push(line.trim()); line = w; }
+                else line = (line + ' ' + w).trim();
+              }
+              if (line) lines.push(line);
+              return lines;
+            },
+          },
+        },
+        y: {
+          display:      false,
+          beginAtZero:  true,
+          suggestedMax: 1,
+        },
+      },
+    },
+  });
+  return chart;
+}
+
+function updateChart() {
+  if (!activeQuestion) return;
+  const ch   = getOrCreateChart();
+  const vals = activeQuestion.options.map(o => activeQuestion.votes[o] || 0);
+  const max  = Math.max(...vals, 1);
+
+  ch.data.labels                   = activeQuestion.options;
+  ch.data.datasets[0].data         = vals;
+  ch.data.datasets[0].backgroundColor = COLORS.slice(0, activeQuestion.options.length);
+  ch.options.scales.y.suggestedMax = Math.ceil(max * 1.15);
+  ch.update();
+}
+</script>
+</body>
+</html>
