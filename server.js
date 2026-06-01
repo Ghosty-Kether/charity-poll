@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Page routes
-app.get('/',        (_req, res) => res.redirect('/join'));
+app.get('/',        (_req, res) => res.redirect('/admin'));
 app.get('/admin',   (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin',   'index.html')));
 app.get('/join',    (_req, res) => res.sendFile(path.join(__dirname, 'public', 'join',    'index.html')));
 app.get('/present', (_req, res) => res.redirect('/admin'));
