@@ -68,7 +68,7 @@
       position: sticky; top: 0; z-index: 100; flex-shrink: 0;
     }
     .header-left { display: flex; align-items: center; gap: .75rem; }
-    #header-logo { max-height: 34px; border-radius: 4px; display: none; }
+    #header-logo { max-height: 52px; border-radius: 4px; display: none; }
     #event-name  { font-size: 1.05rem; font-weight: 700; }
 
     .header-right { display: flex; align-items: center; gap: .75rem; font-size: .82rem; opacity: .85; }
@@ -312,7 +312,7 @@
             <div class="qr-details">
               <div class="card-label" style="margin-bottom:.15rem">Room code</div>
               <div class="room-code" id="room-code-big">——</div>
-              <div class="join-url" id="join-url-text"></div>
+              <div class="join-url"><a id="join-url-text" href="#" target="_blank" style="color:inherit;text-decoration:underline;word-break:break-all;"></a></div>
             </div>
           </div>
         </div>
@@ -585,7 +585,9 @@ async function loadQR() {
     document.getElementById('qr-img').src         = d.qrDataUrl;
     document.getElementById('room-code-big').textContent  = d.roomCode;
     document.getElementById('room-code-hdr').textContent  = d.roomCode;
-    document.getElementById('join-url-text').textContent  = d.joinUrl;
+    const joinLink = document.getElementById('join-url-text');
+    joinLink.textContent = d.joinUrl;
+    joinLink.href = d.joinUrl;
     // Presenter panel
     pQrImg.src = d.qrDataUrl;
     pRoomCode.textContent = d.roomCode;

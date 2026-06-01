@@ -108,6 +108,7 @@
 
 <!-- Top bar -->
 <div class="top-bar">
+  <img id="header-logo" alt="Logo" style="max-height:48px;display:none;position:absolute;left:1.25rem;" />
   <div class="join-pill">
     Join at <strong id="join-host">localhost:3000</strong>
     &nbsp;|&nbsp; use code <span class="code" id="room-code-display">——</span>
@@ -161,6 +162,7 @@ const eventNameFtr   = document.getElementById('event-name-footer');
     const cfg = await fetch('/api/config').then(r => r.json());
     if (cfg.event.primaryColor) document.documentElement.style.setProperty('--primary', cfg.event.primaryColor);
     if (cfg.event.name)         eventNameFtr.textContent = cfg.event.name;
+    if (cfg.event.logoUrl)      { const l = document.getElementById('header-logo'); l.src = cfg.event.logoUrl; l.style.display = 'block'; }
     roomCodeEl.textContent = cfg.roomCode;
     document.title = `Live Results — ${cfg.event.name || 'Charity Poll'}`;
   } catch {}
