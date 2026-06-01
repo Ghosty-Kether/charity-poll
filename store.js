@@ -1,25 +1,26 @@
 /**
- * In-memory data store with JSON persistence.
- * The public interface (methods below) is the only thing server.js touches —
- * swap the backing store for SQLite by replacing the internals without
- * changing any callers.
+ * Data store with MongoDB persistence (primary) and JSON file fallback.
+ * The public interface is unchanged — server.js calls the same methods.
+ * Set MONGODB_URI in your env to enable cloud persistence.
+ * Falls back to session.json if MONGODB_URI is not set (local dev).
  */
 
-const fs   = require('fs');
-const config = require('./config');
+const fs         = require('fs');
+const { MongoClient } = require('mongodb');
+const config     = require('./config');
 
-// ── helpers ─────────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function genRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I confusion
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-// ── seed data ────────────────────────────────────────────────────────────────
+// ── seed data ─────────────────────────────────────────────────────────────────
 
 function makeSeedQuestions() {
   return [
@@ -50,75 +51,115 @@ function makeSeedQuestions() {
   ];
 }
 
-// ── store ────────────────────────────────────────────────────────────────────
+function freshSession() {
+  return {
+    roomCode:         genRoomCode(),
+    activeQuestionId: null,
+    questions:        makeSeedQuestions(),
+  };
+}
+
+// ── store ─────────────────────────────────────────────────────────────────────
 
 class Store {
   constructor() {
     this._participants = new Set();
-    this._load();
+    this.session       = null;
+    this._col          = null; // MongoDB collection, null = file mode
+    // Expose a promise so server.js can wait before listening
+    this.ready = this._init();
   }
 
-  // ── persistence ────────────────────────────────────────────────────────────
+  // ── init / persistence ────────────────────────────────────────────────────
 
-  _load() {
+  async _init() {
+    const uri = config.mongo && config.mongo.uri;
+
+    if (uri) {
+      try {
+        const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+        await client.connect();
+        this._col = client.db('charity-poll').collection('session');
+
+        const saved = await this._col.findOne({ _id: 'session' });
+        if (saved) {
+          delete saved._id;
+          this.session = saved;
+          for (const q of this.session.questions) {
+            q.clientVotes      = q.clientVotes      || {};
+            q.fingerprintVotes = q.fingerprintVotes || {};
+          }
+          console.log(`Session loaded from MongoDB (room: ${this.session.roomCode})`);
+        } else {
+          this.session = freshSession();
+          await this._persist();
+          console.log(`New session created in MongoDB (room: ${this.session.roomCode})`);
+        }
+        return;
+      } catch (err) {
+        console.error('MongoDB connection failed — falling back to file:', err.message);
+        this._col = null;
+      }
+    }
+
+    // ── file fallback (local dev or no MONGODB_URI) ────────────────────────
     try {
       const raw = fs.readFileSync(config.session.persistPath, 'utf8');
       this.session = JSON.parse(raw);
-      // Ensure every question has vote maps (backwards-compat)
       for (const q of this.session.questions) {
         q.clientVotes      = q.clientVotes      || {};
         q.fingerprintVotes = q.fingerprintVotes || {};
       }
-      console.log(`Session loaded from ${config.session.persistPath} (room: ${this.session.roomCode})`);
+      console.log(`Session loaded from file (room: ${this.session.roomCode})`);
     } catch {
-      this.session = {
-        roomCode:        genRoomCode(),
-        activeQuestionId: null,
-        questions:       makeSeedQuestions(),
-      };
-      this._save();
+      this.session = freshSession();
+      this._persistToFile();
       console.log(`New session created (room: ${this.session.roomCode})`);
     }
   }
 
+  // Fire-and-forget save — called after every mutation
   _save() {
+    if (this._col) {
+      this._persist().catch(err => console.error('MongoDB save error:', err.message));
+    } else {
+      this._persistToFile();
+    }
+  }
+
+  async _persist() {
+    await this._col.replaceOne(
+      { _id: 'session' },
+      { _id: 'session', ...this.session },
+      { upsert: true }
+    );
+  }
+
+  _persistToFile() {
     try {
       fs.writeFileSync(config.session.persistPath, JSON.stringify(this.session, null, 2));
     } catch (err) {
-      console.error('Session save failed:', err.message);
+      console.error('File save failed:', err.message);
     }
   }
 
   // ── read helpers ───────────────────────────────────────────────────────────
 
-  getSession() { return this.session; }
+  getSession()        { return this.session; }
+  getQuestion(id)     { return this.session.questions.find(q => q.id === id) || null; }
+  getActiveQuestion() { return this.getQuestion(this.session.activeQuestionId); }
 
-  getQuestion(id) {
-    return this.session.questions.find(q => q.id === id) || null;
-  }
-
-  getActiveQuestion() {
-    return this.getQuestion(this.session.activeQuestionId);
-  }
-
-  /** State sent to all connected clients (no clientVotes map). */
   getPublicState() {
     const { roomCode, activeQuestionId, questions } = this.session;
-    return {
-      roomCode,
-      activeQuestionId,
-      questions: questions.map(q => this._toPublic(q)),
-    };
+    return { roomCode, activeQuestionId, questions: questions.map(q => this._toPublic(q)) };
   }
 
-  /** Extended state sent only to admin sockets. */
   getFullState() {
     const pub = this.getPublicState();
     return {
       ...pub,
       questions: this.session.questions.map(q => ({
         ...this._toPublic(q),
-        // Prefer fingerprint count (more reliable) with clientId as fallback
         voterCount: Math.max(
           Object.keys(q.fingerprintVotes || {}).length,
           Object.keys(q.clientVotes).length
@@ -140,9 +181,9 @@ class Store {
 
   // ── participants ───────────────────────────────────────────────────────────
 
-  addParticipant(socketId)    { this._participants.add(socketId); }
-  removeParticipant(socketId) { this._participants.delete(socketId); }
-  getParticipantCount()       { return this._participants.size; }
+  addParticipant(id)    { this._participants.add(id); }
+  removeParticipant(id) { this._participants.delete(id); }
+  getParticipantCount() { return this._participants.size; }
 
   // ── voting ─────────────────────────────────────────────────────────────────
 
@@ -154,14 +195,11 @@ class Store {
     if (optionIndex < 0 || optionIndex >= q.options.length)
                                                       return { success: false, error: 'Invalid option' };
 
-    // Resolve the device's existing vote — fingerprint is the primary key,
-    // clientId (localStorage) is the fallback for browsers that block canvas.
     const fpIdx  = fingerprint ? (q.fingerprintVotes[fingerprint] ?? undefined) : undefined;
     const cidIdx = q.clientVotes[clientId];
     const prevIdx = fpIdx !== undefined ? fpIdx : cidIdx;
 
     if (prevIdx !== undefined) {
-      // Changing an existing vote — decrement old option
       const prevOpt = q.options[prevIdx];
       q.votes[prevOpt] = Math.max(0, (q.votes[prevOpt] || 0) - 1);
     }
@@ -169,23 +207,16 @@ class Store {
     const newOpt = q.options[optionIndex];
     q.votes[newOpt] = (q.votes[newOpt] || 0) + 1;
 
-    // Record under both identities so either lookup works later
     q.clientVotes[clientId] = optionIndex;
     if (fingerprint) q.fingerprintVotes[fingerprint] = optionIndex;
 
     this._save();
-
-    return {
-      success:    true,
-      votes:      q.votes,
-      totalVotes: Object.values(q.votes).reduce((a, b) => a + b, 0),
-    };
+    return { success: true, votes: q.votes, totalVotes: Object.values(q.votes).reduce((a, b) => a + b, 0) };
   }
 
   getClientVotes(clientId, fingerprint) {
     const result = {};
     for (const q of this.session.questions) {
-      // Fingerprint wins; fall back to clientId
       const fpIdx  = fingerprint ? (q.fingerprintVotes?.[fingerprint] ?? undefined) : undefined;
       const cidIdx = q.clientVotes[clientId];
       const idx    = fpIdx !== undefined ? fpIdx : cidIdx;
@@ -240,9 +271,7 @@ class Store {
 
   addQuestion(title, options) {
     const q = {
-      id:               genId(),
-      title,
-      options,
+      id: genId(), title, options,
       votes:            Object.fromEntries(options.map(o => [o, 0])),
       clientVotes:      {},
       fingerprintVotes: {},
@@ -256,22 +285,14 @@ class Store {
   updateQuestion(id, title, options) {
     const q = this.getQuestion(id);
     if (!q) return { success: false };
-
-    // Carry over vote counts for options that still exist by name
     const newVotes = Object.fromEntries(options.map(o => [o, q.votes[o] || 0]));
-
-    // Prune clientVotes whose selected index no longer maps to the same option
     const newClientVotes = {};
     for (const [cid, optIdx] of Object.entries(q.clientVotes)) {
       if (optIdx < options.length && q.options[optIdx] === options[optIdx]) {
         newClientVotes[cid] = optIdx;
       }
     }
-
-    q.title       = title;
-    q.options     = options;
-    q.votes       = newVotes;
-    q.clientVotes = newClientVotes;
+    q.title = title; q.options = options; q.votes = newVotes; q.clientVotes = newClientVotes;
     this._save();
     return { success: true };
   }
@@ -288,7 +309,6 @@ class Store {
   reorderQuestions(ids) {
     const map = new Map(this.session.questions.map(q => [q.id, q]));
     const reordered = ids.map(id => map.get(id)).filter(Boolean);
-    // Append any questions not mentioned in ids (safety net)
     for (const q of this.session.questions) {
       if (!ids.includes(q.id)) reordered.push(q);
     }

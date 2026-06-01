@@ -2,7 +2,7 @@ require('dotenv').config();
 
 module.exports = {
   event: {
-    name:         process.env.EVENT_NAME        || 'Hope Gala 2026',
+    name:         process.env.EVENT_NAME        || 'Leaders for Change Oakville',
     tagline:      process.env.EVENT_TAGLINE     || 'Together we make a difference',
     logoUrl:      process.env.LOGO_URL          || '',
     primaryColor: process.env.PRIMARY_COLOR     || '#e85d04',
@@ -16,6 +16,9 @@ module.exports = {
   server: {
     port:    parseInt(process.env.PORT || '3000', 10),
     baseUrl: process.env.BASE_URL || '',
+  },
+  mongo: {
+    uri: process.env.MONGODB_URI || '',
   },
   session: {
     persistPath: process.env.SESSION_PATH || './session.json',

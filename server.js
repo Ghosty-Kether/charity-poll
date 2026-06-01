@@ -216,16 +216,23 @@ function broadcastAdminState() {
 }
 
 // ── start ────────────────────────────────────────────────────────────────────
+// Wait for store to finish connecting to MongoDB (or loading from file) before
+// accepting requests — ensures session data is available on the first request.
 
 const port = config.server.port;
-httpServer.listen(port, () => {
-  const { roomCode } = store.getSession();
-  console.log('');
-  console.log('🎉  Charity Poll is running!');
-  console.log(`    URL:        http://localhost:${port}`);
-  console.log(`    Admin:      http://localhost:${port}/admin   (password: ${config.admin.password})`);
-  console.log(`    Join:       http://localhost:${port}/join`);
-  console.log(`    Present:    http://localhost:${port}/present`);
-  console.log(`    Room code:  ${roomCode}`);
-  console.log('');
+store.ready.then(() => {
+  httpServer.listen(port, () => {
+    const { roomCode } = store.getSession();
+    console.log('');
+    console.log('🎉  Charity Poll is running!');
+    console.log(`    URL:        http://localhost:${port}`);
+    console.log(`    Admin:      http://localhost:${port}/admin   (password: ${config.admin.password})`);
+    console.log(`    Join:       http://localhost:${port}/join`);
+    console.log(`    Present:    http://localhost:${port}/present`);
+    console.log(`    Room code:  ${roomCode}`);
+    console.log('');
+  });
+}).catch(err => {
+  console.error('Failed to initialise store:', err);
+  process.exit(1);
 });
