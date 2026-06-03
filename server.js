@@ -36,7 +36,7 @@ app.get('/api/qr', async (req, res) => {
   const session  = store.getSession();
   const proto    = req.headers['x-forwarded-proto'] || req.protocol;
   const host     = req.headers['x-forwarded-host']  || req.get('host');
-  const baseUrl  = config.server.baseUrl || `${proto}://${host}`;
+  const baseUrl  = (config.server.baseUrl || `${proto}://${host}`).replace(/\/+$/, '');
   const joinUrl  = `${baseUrl}/join?code=${session.roomCode}`;
 
   try {

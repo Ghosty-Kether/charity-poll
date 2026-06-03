@@ -586,7 +586,8 @@ async function loadQR() {
     document.getElementById('room-code-big').textContent  = d.roomCode;
     document.getElementById('room-code-hdr').textContent  = d.roomCode;
     const joinLink = document.getElementById('join-url-text');
-    joinLink.textContent = d.joinUrl;
+    const shortUrl = d.joinUrl.replace(/^https?:\/\//, ''); // strip protocol for display
+    joinLink.textContent = shortUrl;
     joinLink.href = d.joinUrl;
     // Presenter panel
     pQrImg.src = d.qrDataUrl;
