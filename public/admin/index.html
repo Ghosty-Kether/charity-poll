@@ -370,7 +370,7 @@
         <img id="p-qr-img" alt="QR code" />
         <div class="p-join-info">
           <div class="p-join-label">Join at</div>
-          <div id="p-join-host"></div>
+          <a id="p-join-host" target="_blank" style="color:inherit;text-decoration:underline;word-break:break-all;"></a>
           <div class="p-join-label">Room code</div>
           <div id="p-room-code"></div>
         </div>
@@ -592,8 +592,8 @@ async function loadQR() {
     // Presenter panel
     pQrImg.src = d.qrDataUrl;
     pRoomCode.textContent = d.roomCode;
-    const url = new URL(d.joinUrl);
-    pJoinHost.textContent = url.hostname + (url.port && !['80','443'].includes(url.port) ? `:${url.port}` : '');
+    pJoinHost.textContent = d.joinUrl.replace(/^https?:\/\//, '');
+    pJoinHost.href = d.joinUrl;
   } catch {}
 }
 
