@@ -207,16 +207,18 @@
     <div class="vote-feedback hidden" id="vote-feedback"></div>
   </div>
 
-  <!-- Live results (shown immediately after voting) -->
-  <div id="screen-results" style="display:none">
-    <div class="results-progress" id="results-progress"></div>
-    <div class="results-q-title" id="results-q-title"></div>
-    <div id="results-bars"></div>
-    <div class="results-footer">
-      <div class="results-total" id="results-total"></div>
-      <button class="btn-change-vote" id="change-vote-btn">Change my vote</button>
-      <div class="locked-results-msg" id="locked-results-msg" style="display:none">🔒 Voting is closed</div>
-    </div>
+  <!-- Thank-you screen (shown after voting — no live results) -->
+  <div id="screen-results" style="display:none;text-align:center;padding:2rem 1rem;">
+    <div style="font-size:3rem;margin-bottom:.75rem;">✅</div>
+    <div id="results-q-title" style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem;"></div>
+    <div id="thankyou-option" style="font-size:1rem;color:var(--primary);font-weight:600;margin-bottom:1.25rem;"></div>
+    <div style="font-size:.9rem;color:#6b7280;margin-bottom:1.5rem;">Your vote has been recorded. Results will be revealed by the host.</div>
+    <button class="btn-change-vote" id="change-vote-btn">Change my vote</button>
+    <div class="locked-results-msg" id="locked-results-msg" style="display:none">🔒 Voting is closed</div>
+    <!-- hidden elements kept so existing JS references don't break -->
+    <div id="results-progress" style="display:none"></div>
+    <div id="results-bars" style="display:none"></div>
+    <div id="results-total" style="display:none"></div>
   </div>
 
 </main>
@@ -482,40 +484,13 @@ function renderQuestion() {
 function renderResults() {
   if (!activeQuestion) return;
   const q = activeQuestion;
-
-  // Update header
-  if (publicState) {
-    const idx = publicState.questions.findIndex(x => x.id === q.id);
-    resultsProgress.textContent = idx >= 0 ? `Question ${idx+1} of ${publicState.questions.length}` : '';
-  }
   resultsQTitle.textContent = q.title;
 
-  // Rebuild bar rows when entering this question for the first time
-  if (q.id !== resultsQId) {
-    resultsQId = q.id;
-    resultsBars.innerHTML = '';
-    q.options.forEach((opt, i) => {
-      const isMyVote = i === myVotes[q.id];
-      const row = document.createElement('div');
-      row.className = 'result-row';
-      row.dataset.i = i;
-      row.innerHTML = `
-        <div class="result-row-header">
-          <span class="result-label">
-            ${isMyVote ? '<span class="my-check">✓</span>' : ''}
-            <span class="opt-text">${escHtml(opt)}</span>
-          </span>
-          <span class="result-pct">0%</span>
-        </div>
-        <div class="result-track">
-          <div class="result-fill${isMyVote ? ' my-vote' : ''}" style="width:0%"></div>
-        </div>`;
-      resultsBars.appendChild(row);
-    });
-    // Animate bars in on next paint
-    requestAnimationFrame(() => requestAnimationFrame(() => updateResultBars()));
-  } else {
-    updateResultBars();
+  // Show which option the user picked
+  const myIdx = myVotes[q.id];
+  const thankyouOption = document.getElementById('thankyou-option');
+  if (thankyouOption) {
+    thankyouOption.textContent = myIdx !== undefined ? `You voted: "${q.options[myIdx]}"` : '';
   }
 
   renderLockedState();
