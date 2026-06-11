@@ -77,6 +77,7 @@ class Store {
     if (uri) {
       try {
         const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+        client.on('error', () => {});
         await client.connect();
         this._db  = client.db('charity-poll');
         this._col = this._db.collection('session');
