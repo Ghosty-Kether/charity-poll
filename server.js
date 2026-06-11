@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+// Prevent MongoDB auth errors from crashing the process when URI is misconfigured.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (non-fatal):', err?.message || err);
+});
+
 const express        = require('express');
 const http           = require('http');
 const { Server }     = require('socket.io');
