@@ -23,13 +23,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Session middleware ────────────────────────────────────────────────────────
 
+let mongoSessionStore;
+if (config.mongo.uri) {
+  try {
+    mongoSessionStore = MongoStore.create({ mongoUrl: config.mongo.uri, dbName: 'charity-poll', ttl: 7 * 24 * 3600 });
+    mongoSessionStore.on('error', (err) => console.error('Session store error:', err.message));
+  } catch (err) {
+    console.error('Session store init failed:', err.message);
+  }
+}
+
 const sessionMiddleware = session({
   secret:            config.session.secret,
   resave:            false,
   saveUninitialized: false,
-  store: config.mongo.uri
-    ? MongoStore.create({ mongoUrl: config.mongo.uri, dbName: 'charity-poll', ttl: 7 * 24 * 3600 })
-    : undefined,
+  store:             mongoSessionStore,
   cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
 });
 
