@@ -37,6 +37,7 @@
     #header-logo { max-height: 48px; border-radius: 4px; display: none; }
     #event-name  { font-size: .95rem; font-weight: 700; }
     .room-chip   { font-size: .75rem; background: rgba(255,255,255,.15); padding: .2rem .6rem; border-radius: 99px; }
+    #user-chip   { font-size: .75rem; background: rgba(255,255,255,.12); padding: .2rem .6rem; border-radius: 99px; display: none; align-items: center; gap: .35rem; }
 
     /* ── Main ────────────────────────────────────────────────────────────── */
     main {
@@ -45,11 +46,26 @@
       padding: 1.5rem 1rem 2rem;
     }
 
+    /* ── Google login screen ─────────────────────────────────────────────── */
+    #screen-login { width: 100%; max-width: 380px; text-align: center; }
+    #screen-login .login-logo { max-height: 80px; margin-bottom: 1.25rem; }
+    #screen-login h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: .5rem; }
+    #screen-login p  { color: var(--muted); font-size: .95rem; line-height: 1.5; margin-bottom: 2rem; }
+    .google-btn {
+      display: inline-flex; align-items: center; gap: .75rem;
+      background: #fff; border: 2px solid #dadce0; border-radius: 99px;
+      padding: .8rem 1.75rem; font-size: 1rem; font-weight: 600; color: #3c4043;
+      text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,.1);
+      transition: box-shadow .2s, border-color .2s; cursor: pointer;
+    }
+    .google-btn:hover { box-shadow: 0 4px 14px rgba(0,0,0,.15); border-color: #aaa; }
+    .google-btn svg   { flex-shrink: 0; }
+    .login-note { font-size: .78rem; color: var(--muted); margin-top: 1.5rem; line-height: 1.5; }
+
     /* ── Code entry screen ───────────────────────────────────────────────── */
     #screen-code { width: 100%; max-width: 360px; text-align: center; }
     #screen-code h1 { font-size: 1.6rem; margin-bottom: .5rem; }
     #screen-code p  { color: var(--muted); margin-bottom: 1.5rem; font-size: .95rem; }
-
     #code-input {
       width: 100%; padding: 1rem;
       border: 2px solid var(--border); border-radius: var(--radius);
@@ -58,7 +74,6 @@
     }
     #code-input:focus { border-color: var(--primary); }
     #code-error { color: #dc2626; font-size: .85rem; margin-bottom: .5rem; min-height: 1.25rem; }
-
     .btn-join {
       width: 100%; background: var(--primary); color: #fff;
       border: none; padding: 1rem; border-radius: var(--radius);
@@ -77,7 +92,6 @@
     #screen-question { width: 100%; max-width: 480px; }
     .q-progress { font-size: .75rem; color: var(--muted); margin-bottom: .75rem; text-align: center; }
     #question-title { font-size: 1.25rem; font-weight: 700; text-align: center; margin-bottom: 1.5rem; line-height: 1.35; color: var(--dark); }
-
     #options-list { display: flex; flex-direction: column; gap: .65rem; }
     .option-btn {
       width: 100%; padding: 1rem 1.25rem;
@@ -89,7 +103,6 @@
     .option-btn.selected { border-color: var(--primary); background: var(--primary); color: #fff; }
     .option-btn:disabled:not(.selected) { opacity: .45; cursor: not-allowed; }
     .option-btn .check-icon { font-size: 1.1rem; flex-shrink: 0; }
-
     .vote-feedback {
       margin-top: 1.25rem; text-align: center; font-size: .9rem;
       color: var(--success); font-weight: 600; min-height: 1.25rem; transition: opacity .3s;
@@ -102,58 +115,18 @@
       text-align: center; width: 100%;
     }
 
-    /* ── Results screen ──────────────────────────────────────────────────── */
-    #screen-results { width: 100%; max-width: 480px; }
+    /* ── Thank-you screen ────────────────────────────────────────────────── */
+    #screen-results { width: 100%; max-width: 480px; text-align: center; padding: 2rem 1rem; }
+    #screen-results .ty-icon { font-size: 3.5rem; margin-bottom: .75rem; }
+    #results-q-title { font-size: 1.1rem; font-weight: 700; margin-bottom: .5rem; line-height: 1.35; }
+    #thankyou-option { font-size: 1rem; color: var(--primary); font-weight: 700; margin-bottom: 1.25rem; }
+    .ty-note { font-size: .9rem; color: var(--muted); line-height: 1.5; }
 
-    .results-progress {
-      font-size: .75rem; color: var(--muted); margin-bottom: .4rem; text-align: center;
-    }
-    .results-q-title {
-      font-size: 1.15rem; font-weight: 700; text-align: center;
-      margin-bottom: 1.5rem; line-height: 1.35; color: var(--dark);
-    }
-
-    .result-row { margin-bottom: .9rem; }
-    .result-row-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: .3rem; gap: .5rem;
-    }
-    .result-label {
-      font-size: .88rem; font-weight: 600; color: var(--dark);
-      display: flex; align-items: center; gap: .35rem; min-width: 0; flex: 1;
-    }
-    .result-label .my-check {
-      color: var(--primary); font-weight: 900; font-size: 1rem; flex-shrink: 0;
-    }
-    .result-label .opt-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .result-pct {
-      font-size: .85rem; font-weight: 700; color: var(--muted);
-      flex-shrink: 0; min-width: 36px; text-align: right;
-    }
-    .result-track {
-      height: 30px; background: #e5e7eb; border-radius: 8px; overflow: hidden;
-    }
-    .result-fill {
-      height: 100%; border-radius: 8px; background: #d1d5db;
-      transition: width .65s cubic-bezier(.4,0,.2,1);
-      width: 0%;
-    }
-    .result-fill.my-vote { background: var(--primary); }
-
-    .results-footer {
-      margin-top: 1.5rem; display: flex; flex-direction: column; align-items: center; gap: .65rem;
-    }
-    .results-total { font-size: .82rem; color: var(--muted); }
-    .btn-change-vote {
-      background: none; border: 2px solid var(--border); border-radius: 99px;
-      padding: .45rem 1.5rem; font-size: .88rem; font-weight: 600; color: var(--muted);
-      cursor: pointer; transition: all .2s;
-    }
-    .btn-change-vote:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
-    .btn-change-vote:disabled { opacity: .35; cursor: not-allowed; }
-    .locked-results-msg {
-      font-size: .78rem; color: #7c3aed; font-weight: 600; letter-spacing: .02em;
-    }
+    /* ── Presentation ended screen ───────────────────────────────────────── */
+    #screen-ended { text-align: center; max-width: 320px; }
+    #screen-ended .ended-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+    #screen-ended h2 { font-size: 1.4rem; margin-bottom: .5rem; }
+    #screen-ended p  { color: var(--muted); font-size: .95rem; line-height: 1.5; }
 
     /* ── Reconnecting banner ─────────────────────────────────────────────── */
     #reconnect-banner {
@@ -177,13 +150,33 @@
     <img id="header-logo" alt="logo" />
     <span id="event-name">Charity Poll</span>
   </div>
-  <span class="room-chip" id="room-chip" style="display:none">Room <strong id="room-code-display"></strong></span>
+  <div style="display:flex;align-items:center;gap:.5rem;">
+    <span class="room-chip" id="room-chip" style="display:none">Room <strong id="room-code-display"></strong></span>
+    <span id="user-chip"></span>
+  </div>
 </div>
 
 <main>
 
+  <!-- Google login -->
+  <div id="screen-login" style="display:none">
+    <img class="login-logo" id="login-logo" src="/logo.png" alt="Logo" />
+    <h2 id="login-event-name">Tonight's Poll</h2>
+    <p>Sign in with your Google account to participate in the vote.</p>
+    <a id="google-signin-link" href="/auth/google" class="google-btn">
+      <svg width="20" height="20" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      Sign in with Google
+    </a>
+    <p class="login-note">We only use your name to identify your vote.<br>No personal data is stored or shared beyond this event.</p>
+  </div>
+
   <!-- Code entry -->
-  <div id="screen-code">
+  <div id="screen-code" style="display:none">
     <h1>Join the Vote</h1>
     <p>Enter the 6-character room code shown on the screen.</p>
     <input type="text" id="code-input" maxlength="6" placeholder="ABC123"
@@ -207,18 +200,19 @@
     <div class="vote-feedback hidden" id="vote-feedback"></div>
   </div>
 
-  <!-- Thank-you screen (shown after voting — no live results) -->
-  <div id="screen-results" style="display:none;text-align:center;padding:2rem 1rem;">
-    <div style="font-size:3rem;margin-bottom:.75rem;">✅</div>
-    <div id="results-q-title" style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem;"></div>
-    <div id="thankyou-option" style="font-size:1rem;color:var(--primary);font-weight:600;margin-bottom:1.25rem;"></div>
-    <div style="font-size:.9rem;color:#6b7280;margin-bottom:1.5rem;">Your vote has been recorded. Results will be revealed by the host.</div>
-    <button class="btn-change-vote" id="change-vote-btn">Change my vote</button>
-    <div class="locked-results-msg" id="locked-results-msg" style="display:none">🔒 Voting is closed</div>
-    <!-- hidden elements kept so existing JS references don't break -->
-    <div id="results-progress" style="display:none"></div>
-    <div id="results-bars" style="display:none"></div>
-    <div id="results-total" style="display:none"></div>
+  <!-- Thank-you after voting -->
+  <div id="screen-results" style="display:none">
+    <div class="ty-icon">✅</div>
+    <div id="results-q-title"></div>
+    <div id="thankyou-option"></div>
+    <p class="ty-note">Your vote has been recorded.<br>Results will be revealed by the host.</p>
+  </div>
+
+  <!-- Presentation ended -->
+  <div id="screen-ended" style="display:none">
+    <div class="ended-icon">🎉</div>
+    <h2>Thanks for participating!</h2>
+    <p>Voting has closed. Stay tuned for the results!</p>
   </div>
 
 </main>
@@ -246,15 +240,12 @@ async function buildFingerprint() {
     navigator.platform || '',
   ];
   try {
-    const c = document.createElement('canvas');
-    c.width = 240; c.height = 60;
+    const c = document.createElement('canvas'); c.width = 240; c.height = 60;
     const ctx = c.getContext('2d');
     ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#f60'; ctx.fillRect(100, 1, 62, 20);
-    ctx.fillStyle = '#069'; ctx.font = '11pt Arial';
-    ctx.fillText('CharityPoll \u{1F389}', 2, 15);
-    ctx.fillStyle = 'rgba(102,204,0,0.7)'; ctx.font = '18pt Arial';
-    ctx.fillText('2026', 4, 50);
+    ctx.fillStyle = '#069'; ctx.font = '11pt Arial'; ctx.fillText('CharityPoll \u{1F389}', 2, 15);
+    ctx.fillStyle = 'rgba(102,204,0,0.7)'; ctx.font = '18pt Arial'; ctx.fillText('2026', 4, 50);
     parts.push(c.toDataURL());
   } catch {}
   const str = parts.join('|||');
@@ -269,20 +260,24 @@ async function buildFingerprint() {
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let socket          = null;
-let joined          = false;
-let publicState     = null;
-let myVotes         = {};
-let activeQuestion  = null;
-let currentRoomCode = null;
-let currentScreen   = 'code';
-let resultsQId      = null; // which question the results screen is built for
+let socket             = null;
+let joined             = false;
+let publicState        = null;
+let myVotes            = {};
+let activeQuestion     = null;
+let currentRoomCode    = null;
+let currentScreen      = 'code';
+let presentationStatus = 'idle';
+let googleAuthEnabled  = false;
+let googleUser         = null;
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const screenLogin    = document.getElementById('screen-login');
 const screenCode     = document.getElementById('screen-code');
 const screenWaiting  = document.getElementById('screen-waiting');
 const screenQuestion = document.getElementById('screen-question');
 const screenResults  = document.getElementById('screen-results');
+const screenEnded    = document.getElementById('screen-ended');
 const codeInput      = document.getElementById('code-input');
 const codeError      = document.getElementById('code-error');
 const joinBtn        = document.getElementById('join-btn');
@@ -293,27 +288,46 @@ const reconnBanner   = document.getElementById('reconnect-banner');
 const roomChip       = document.getElementById('room-chip');
 const roomCodeDisp   = document.getElementById('room-code-display');
 const qProgress      = document.getElementById('q-progress');
-const resultsProgress = document.getElementById('results-progress');
-const resultsQTitle  = document.getElementById('results-q-title');
-const resultsBars    = document.getElementById('results-bars');
-const resultsTotal   = document.getElementById('results-total');
-const changeVoteBtn  = document.getElementById('change-vote-btn');
-const lockedResultsMsg = document.getElementById('locked-results-msg');
+const userChip       = document.getElementById('user-chip');
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async function init() {
-  const [fp, cfg] = await Promise.allSettled([
+  const [fp, cfg, me] = await Promise.allSettled([
     buildFingerprint(),
     fetch('/api/config').then(r => r.json()),
+    fetch('/api/me').then(r => r.json()),
   ]);
-  if (fp.status === 'fulfilled')  deviceFingerprint = fp.value;
+
+  if (fp.status  === 'fulfilled') deviceFingerprint = fp.value;
   if (cfg.status === 'fulfilled') {
     applyTheme(cfg.value.event);
     currentRoomCode = cfg.value.roomCode;
   }
-  const params = new URLSearchParams(location.search);
+
+  const meData = me.status === 'fulfilled' ? me.value : {};
+  googleAuthEnabled = meData.googleAuthEnabled || false;
+  googleUser        = meData.user || null;
+
+  // Show logged-in user in header
+  if (googleUser) {
+    userChip.textContent = googleUser.name;
+    userChip.style.display = 'inline-flex';
+  }
+
+  // If Google auth is required and user is not logged in, show login screen
+  if (googleAuthEnabled && !googleUser) {
+    const params  = new URLSearchParams(location.search);
+    const urlCode = params.get('code');
+    const link    = document.getElementById('google-signin-link');
+    if (link) link.href = `/auth/google${urlCode ? `?code=${urlCode}` : ''}`;
+    showScreen('login');
+    return;
+  }
+
+  const params  = new URLSearchParams(location.search);
   const urlCode = params.get('code');
   if (urlCode) { codeInput.value = urlCode.toUpperCase(); handleJoin(); }
+  else         { showScreen('code'); }
 })();
 
 function applyTheme(ev) {
@@ -322,8 +336,16 @@ function applyTheme(ev) {
   if (ev.accentColor)  r.setProperty('--accent',  ev.accentColor);
   if (ev.bgColor)      r.setProperty('--bg',       ev.bgColor);
   if (ev.darkColor)    r.setProperty('--dark',     ev.darkColor);
-  if (ev.name) { document.getElementById('event-name').textContent = ev.name; document.title = `Vote — ${ev.name}`; }
-  if (ev.logoUrl) { const l = document.getElementById('header-logo'); l.src = ev.logoUrl; l.style.display = 'block'; }
+  if (ev.name) {
+    document.getElementById('event-name').textContent = ev.name;
+    const loginName = document.getElementById('login-event-name');
+    if (loginName) loginName.textContent = ev.name;
+    document.title = `Vote — ${ev.name}`;
+  }
+  if (ev.logoUrl) {
+    const l = document.getElementById('header-logo');
+    l.src = ev.logoUrl; l.style.display = 'block';
+  }
 }
 
 // ── Join flow ─────────────────────────────────────────────────────────────────
@@ -357,42 +379,45 @@ function connectSocket() {
   socket.on('reconnect',  () => reconnBanner.classList.remove('visible'));
 
   socket.on('state', (state) => {
-    publicState = state;
-    currentRoomCode = state.roomCode;
-    roomCodeDisp.textContent = state.roomCode;
-    roomChip.style.display = 'inline-block';
+    publicState        = state;
+    currentRoomCode    = state.roomCode;
+    presentationStatus = state.presentation?.status || 'idle';
+    roomCodeDisp.textContent   = state.roomCode;
+    roomChip.style.display     = 'inline-block';
 
-    if (!joined) { joined = true; showScreen('waiting'); }
+    if (!joined) { joined = true; }
 
     activeQuestion = state.questions.find(q => q.id === state.activeQuestionId) || null;
     renderCurrentState();
   });
 
-  socket.on('vote-history', ({ votes }) => {
+  socket.on('presentation-state', ({ status }) => {
+    presentationStatus = status;
+    if (status === 'ended') showScreen('ended');
+  });
+
+  socket.on('vote-history', ({ votes, user }) => {
     myVotes = votes;
+    if (user && !googleUser) {
+      googleUser = user;
+      userChip.textContent    = user.name;
+      userChip.style.display  = 'inline-flex';
+    }
     renderCurrentState();
   });
 
   socket.on('question-changed', ({ activeQuestionId, question }) => {
     activeQuestion = question || null;
-    // Reset results screen binding when question changes
-    if (!activeQuestion || (resultsQId && activeQuestion.id !== resultsQId)) {
-      resultsQId = null;
-    }
     renderCurrentState();
   });
 
   socket.on('vote-update', ({ questionId, votes, totalVotes }) => {
     if (activeQuestion && activeQuestion.id === questionId) {
-      activeQuestion.votes = votes;
-      activeQuestion.totalVotes = totalVotes;
+      activeQuestion.votes = votes; activeQuestion.totalVotes = totalVotes;
     }
     if (publicState) {
       const q = publicState.questions.find(q => q.id === questionId);
       if (q) { q.votes = votes; q.totalVotes = totalVotes; }
-    }
-    if (currentScreen === 'results' && activeQuestion?.id === questionId) {
-      updateResultBars();
     }
   });
 
@@ -400,155 +425,102 @@ function connectSocket() {
     if (activeQuestion && activeQuestion.id === questionId) {
       activeQuestion.locked = locked;
       if (currentScreen === 'question') renderQuestion();
-      if (currentScreen === 'results')  renderLockedState();
     }
   });
 
-  socket.on('vote-error', ({ message }) => {
-    voteFeedback.textContent = `⚠ ${message}`;
-    voteFeedback.classList.remove('hidden');
-    voteFeedback.style.color = '#dc2626';
+  socket.on('vote-error', ({ message, votedIndex }) => {
+    if (message === 'already_voted') {
+      // Already voted — show thank-you screen
+      if (votedIndex !== undefined && activeQuestion) myVotes[activeQuestion.id] = votedIndex;
+      showScreen('results');
+      renderThankYou();
+    } else {
+      voteFeedback.textContent = `⚠ ${message}`;
+      voteFeedback.classList.remove('hidden');
+      voteFeedback.style.color = '#dc2626';
+      // Roll back optimistic vote
+      if (activeQuestion) delete myVotes[activeQuestion.id];
+      showScreen('question');
+      renderQuestion();
+    }
   });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderCurrentState() {
   if (!joined) return;
-  if (!activeQuestion) { showScreen('waiting'); return; }
-
-  // If user already voted on this question, show results
+  if (presentationStatus === 'ended') { showScreen('ended'); return; }
+  if (!activeQuestion)                { showScreen('waiting'); return; }
   if (myVotes[activeQuestion.id] !== undefined) {
     showScreen('results');
-    renderResults();
+    renderThankYou();
     return;
   }
-
   showScreen('question');
   renderQuestion();
 }
 
 function showScreen(name) {
   currentScreen = name;
+  screenLogin.style.display    = name === 'login'    ? 'block' : 'none';
   screenCode.style.display     = name === 'code'     ? 'block' : 'none';
   screenWaiting.style.display  = name === 'waiting'  ? 'block' : 'none';
   screenQuestion.style.display = name === 'question' ? 'block' : 'none';
   screenResults.style.display  = name === 'results'  ? 'block' : 'none';
+  screenEnded.style.display    = name === 'ended'    ? 'block' : 'none';
 }
 
 function renderQuestion() {
   if (!activeQuestion) return;
-
   questionTitle.textContent = activeQuestion.title;
   if (publicState) {
-    const qs  = publicState.questions;
-    const idx = qs.findIndex(q => q.id === activeQuestion.id);
-    if (idx >= 0) qProgress.textContent = `Question ${idx + 1} of ${qs.length}`;
+    const idx = publicState.questions.findIndex(q => q.id === activeQuestion.id);
+    if (idx >= 0) qProgress.textContent = `Question ${idx + 1} of ${publicState.questions.length}`;
   }
-
-  const myVoteIdx = myVotes[activeQuestion.id];
-  const isLocked  = activeQuestion.locked;
-
+  const isLocked = activeQuestion.locked;
   optionsList.innerHTML = '';
   activeQuestion.options.forEach((opt, i) => {
     const btn = document.createElement('button');
-    btn.className = 'option-btn' + (i === myVoteIdx ? ' selected' : '');
-    btn.disabled  = isLocked && i !== myVoteIdx;
+    btn.className = 'option-btn';
+    btn.disabled  = isLocked;
     const icon = document.createElement('span');
-    icon.className = 'check-icon';
-    icon.textContent = i === myVoteIdx ? '✓' : '';
+    icon.className = 'check-icon'; icon.textContent = '';
     btn.appendChild(icon);
     btn.appendChild(document.createTextNode(opt));
     btn.addEventListener('click', () => castVote(i));
     optionsList.appendChild(btn);
   });
-
-  const existing = optionsList.querySelector('.locked-badge-inline');
-  if (existing) existing.remove();
   if (isLocked) {
     const badge = document.createElement('div');
-    badge.className = 'locked-badge-inline';
+    badge.className   = 'locked-badge-inline';
     badge.textContent = '🔒 Voting is closed for this question';
     optionsList.appendChild(badge);
   }
-
-  if (myVoteIdx !== undefined) {
-    voteFeedback.textContent = `✓ You voted for "${activeQuestion.options[myVoteIdx]}"`;
-    voteFeedback.style.color = '';
-    voteFeedback.classList.remove('hidden');
-  } else {
-    voteFeedback.classList.add('hidden');
-  }
+  voteFeedback.classList.add('hidden');
 }
 
-// ── Results screen ────────────────────────────────────────────────────────────
-function renderResults() {
+function renderThankYou() {
   if (!activeQuestion) return;
-  const q = activeQuestion;
-  resultsQTitle.textContent = q.title;
-
-  // Show which option the user picked
-  const myIdx = myVotes[q.id];
-  const thankyouOption = document.getElementById('thankyou-option');
-  if (thankyouOption) {
-    thankyouOption.textContent = myIdx !== undefined ? `You voted: "${q.options[myIdx]}"` : '';
-  }
-
-  renderLockedState();
-}
-
-function updateResultBars() {
-  if (!activeQuestion) return;
-  const q = activeQuestion;
-  const myVoteIdx = myVotes[q.id];
-  const total = q.totalVotes ?? Object.values(q.votes).reduce((a,b)=>a+b,0);
-
-  q.options.forEach((opt, i) => {
-    const row = resultsBars.querySelector(`[data-i="${i}"]`);
-    if (!row) return;
-    const count   = q.votes[opt] || 0;
-    const pct     = total > 0 ? Math.round(count / total * 100) : 0;
-    const isMyVote = i === myVoteIdx;
-
-    const fill   = row.querySelector('.result-fill');
-    const pctEl  = row.querySelector('.result-pct');
-    const label  = row.querySelector('.result-label');
-
-    if (fill) {
-      fill.style.width = pct + '%';
-      fill.classList.toggle('my-vote', isMyVote);
-    }
-    if (pctEl) pctEl.textContent = pct + '%';
-
-    // Sync check mark
-    const checkEl = label?.querySelector('.my-check');
-    if (isMyVote && !checkEl && label) {
-      const span = document.createElement('span');
-      span.className = 'my-check'; span.textContent = '✓';
-      label.prepend(span);
-    } else if (!isMyVote && checkEl) {
-      checkEl.remove();
-    }
-  });
-
-  resultsTotal.textContent = `${total} vote${total !== 1 ? 's' : ''}`;
-}
-
-function renderLockedState() {
-  if (!activeQuestion) return;
-  const locked = activeQuestion.locked;
-  changeVoteBtn.disabled = locked;
-  lockedResultsMsg.style.display = locked ? 'block' : 'none';
+  document.getElementById('results-q-title').textContent = activeQuestion.title;
+  const myIdx   = myVotes[activeQuestion.id];
+  const optName = myIdx !== undefined ? activeQuestion.options[myIdx] : '';
+  document.getElementById('thankyou-option').textContent = optName ? `You voted: "${optName}"` : '';
 }
 
 // ── Voting ────────────────────────────────────────────────────────────────────
 function castVote(optionIndex) {
   if (!activeQuestion || activeQuestion.locked) return;
+  if (presentationStatus !== 'active') {
+    voteFeedback.textContent = '⚠ Voting is not open yet.';
+    voteFeedback.classList.remove('hidden');
+    voteFeedback.style.color = '#dc2626';
+    return;
+  }
 
   // Optimistic update
   myVotes[activeQuestion.id] = optionIndex;
-  resultsQId = null; // force rebuild of results bars for this vote
   showScreen('results');
-  renderResults();
+  renderThankYou();
 
   socket.emit('vote', {
     questionId:  activeQuestion.id,
@@ -558,17 +530,8 @@ function castVote(optionIndex) {
   });
 }
 
-// ── Change vote ───────────────────────────────────────────────────────────────
-changeVoteBtn.addEventListener('click', () => {
-  if (!activeQuestion || activeQuestion.locked) return;
-  showScreen('question');
-  renderQuestion();
-});
-
-// ── Util ──────────────────────────────────────────────────────────────────────
 function escHtml(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 </script>

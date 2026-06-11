@@ -1,13 +1,12 @@
 /**
- * Data store with MongoDB persistence (primary) and JSON file fallback.
- * The public interface is unchanged — server.js calls the same methods.
- * Set MONGODB_URI in your env to enable cloud persistence.
- * Falls back to session.json if MONGODB_URI is not set (local dev).
+ * Data store — MongoDB primary, JSON file fallback.
+ * Added: presentation state, googleVotes (true once-only per account),
+ *        startPresentation / endPresentation, getResultsCSV, results snapshot.
  */
 
-const fs         = require('fs');
+const fs            = require('fs');
 const { MongoClient } = require('mongodb');
-const config     = require('./config');
+const config        = require('./config');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -20,34 +19,33 @@ function genRoomCode() {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-// ── seed data ─────────────────────────────────────────────────────────────────
+function makeQuestion(title, options) {
+  return {
+    id:               genId(),
+    title,
+    options,
+    votes:            Object.fromEntries(options.map(o => [o, 0])),
+    clientVotes:      {},
+    fingerprintVotes: {},
+    googleVotes:      {},
+    locked:           false,
+  };
+}
 
 function makeSeedQuestions() {
   return [
-    {
-      id: genId(),
-      title: 'Which cause should receive the largest share of tonight\'s donations?',
-      options: ['Food Bank & Nutrition', 'Emergency Shelter', 'Mental Health Support', 'Youth Education'],
-      votes: { 'Food Bank & Nutrition': 0, 'Emergency Shelter': 0, 'Mental Health Support': 0, 'Youth Education': 0 },
-      clientVotes: {}, fingerprintVotes: {},
-      locked: false,
-    },
-    {
-      id: genId(),
-      title: 'How did you first hear about our charity?',
-      options: ['Friend or Family', 'Social Media', 'Local News', 'I\'ve Volunteered Before'],
-      votes: { 'Friend or Family': 0, 'Social Media': 0, 'Local News': 0, 'I\'ve Volunteered Before': 0 },
-      clientVotes: {}, fingerprintVotes: {},
-      locked: false,
-    },
-    {
-      id: genId(),
-      title: 'Which initiative are you most excited to support this year?',
-      options: ['Community Kitchen', 'After-School Programs', 'Crisis Hotline', 'Clean Water Project', 'Winter Warmth Drive'],
-      votes: { 'Community Kitchen': 0, 'After-School Programs': 0, 'Crisis Hotline': 0, 'Clean Water Project': 0, 'Winter Warmth Drive': 0 },
-      clientVotes: {}, fingerprintVotes: {},
-      locked: false,
-    },
+    makeQuestion(
+      'Which cause should receive the largest share of tonight\'s donations?',
+      ['Food Bank & Nutrition', 'Emergency Shelter', 'Mental Health Support', 'Youth Education']
+    ),
+    makeQuestion(
+      'How did you first hear about our charity?',
+      ['Friend or Family', 'Social Media', 'Local News', 'I\'ve Volunteered Before']
+    ),
+    makeQuestion(
+      'Which initiative are you most excited to support this year?',
+      ['Community Kitchen', 'After-School Programs', 'Crisis Hotline', 'Clean Water Project', 'Winter Warmth Drive']
+    ),
   ];
 }
 
@@ -55,6 +53,7 @@ function freshSession() {
   return {
     roomCode:         genRoomCode(),
     activeQuestionId: null,
+    presentation:     { status: 'idle', startedAt: null, endedAt: null },
     questions:        makeSeedQuestions(),
   };
 }
@@ -65,30 +64,28 @@ class Store {
   constructor() {
     this._participants = new Set();
     this.session       = null;
-    this._col          = null; // MongoDB collection, null = file mode
-    // Expose a promise so server.js can wait before listening
-    this.ready = this._init();
+    this._col          = null;
+    this._db           = null;
+    this.ready         = this._init();
   }
 
   // ── init / persistence ────────────────────────────────────────────────────
 
   async _init() {
-    const uri = config.mongo && config.mongo.uri;
+    const uri = config.mongo?.uri;
 
     if (uri) {
       try {
         const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
         await client.connect();
-        this._col = client.db('charity-poll').collection('session');
+        this._db  = client.db('charity-poll');
+        this._col = this._db.collection('session');
 
         const saved = await this._col.findOne({ _id: 'session' });
         if (saved) {
           delete saved._id;
           this.session = saved;
-          for (const q of this.session.questions) {
-            q.clientVotes      = q.clientVotes      || {};
-            q.fingerprintVotes = q.fingerprintVotes || {};
-          }
+          this._backfill();
           console.log(`Session loaded from MongoDB (room: ${this.session.roomCode})`);
         } else {
           this.session = freshSession();
@@ -98,18 +95,14 @@ class Store {
         return;
       } catch (err) {
         console.error('MongoDB connection failed — falling back to file:', err.message);
-        this._col = null;
+        this._col = null; this._db = null;
       }
     }
 
-    // ── file fallback (local dev or no MONGODB_URI) ────────────────────────
     try {
       const raw = fs.readFileSync(config.session.persistPath, 'utf8');
       this.session = JSON.parse(raw);
-      for (const q of this.session.questions) {
-        q.clientVotes      = q.clientVotes      || {};
-        q.fingerprintVotes = q.fingerprintVotes || {};
-      }
+      this._backfill();
       console.log(`Session loaded from file (room: ${this.session.roomCode})`);
     } catch {
       this.session = freshSession();
@@ -118,7 +111,18 @@ class Store {
     }
   }
 
-  // Fire-and-forget save — called after every mutation
+  /** Ensure fields added in later versions exist on older saved sessions. */
+  _backfill() {
+    if (!this.session.presentation) {
+      this.session.presentation = { status: 'idle', startedAt: null, endedAt: null };
+    }
+    for (const q of this.session.questions) {
+      q.clientVotes      = q.clientVotes      || {};
+      q.fingerprintVotes = q.fingerprintVotes || {};
+      q.googleVotes      = q.googleVotes      || {};
+    }
+  }
+
   _save() {
     if (this._col) {
       this._persist().catch(err => console.error('MongoDB save error:', err.message));
@@ -143,6 +147,26 @@ class Store {
     }
   }
 
+  async _saveResultsSnapshot() {
+    if (!this._db) return;
+    try {
+      const col = this._db.collection('results');
+      await col.insertOne({
+        savedAt:   new Date(),
+        roomCode:  this.session.roomCode,
+        endedAt:   this.session.presentation.endedAt,
+        questions: this.session.questions.map(q => ({
+          title:      q.title,
+          options:    q.options,
+          votes:      q.votes,
+          totalVotes: Object.values(q.votes).reduce((a, b) => a + b, 0),
+        })),
+      });
+    } catch (err) {
+      console.error('Results snapshot failed:', err.message);
+    }
+  }
+
   // ── read helpers ───────────────────────────────────────────────────────────
 
   getSession()        { return this.session; }
@@ -150,8 +174,13 @@ class Store {
   getActiveQuestion() { return this.getQuestion(this.session.activeQuestionId); }
 
   getPublicState() {
-    const { roomCode, activeQuestionId, questions } = this.session;
-    return { roomCode, activeQuestionId, questions: questions.map(q => this._toPublic(q)) };
+    const { roomCode, activeQuestionId, questions, presentation } = this.session;
+    return {
+      roomCode,
+      activeQuestionId,
+      presentation: presentation || { status: 'idle' },
+      questions: questions.map(q => this._toPublic(q)),
+    };
   }
 
   getFullState() {
@@ -161,6 +190,7 @@ class Store {
       questions: this.session.questions.map(q => ({
         ...this._toPublic(q),
         voterCount: Math.max(
+          Object.keys(q.googleVotes      || {}).length,
           Object.keys(q.fingerprintVotes || {}).length,
           Object.keys(q.clientVotes).length
         ),
@@ -185,44 +215,98 @@ class Store {
   removeParticipant(id) { this._participants.delete(id); }
   getParticipantCount() { return this._participants.size; }
 
+  // ── presentation ───────────────────────────────────────────────────────────
+
+  startPresentation() {
+    this.session.presentation = {
+      status:    'active',
+      startedAt: new Date().toISOString(),
+      endedAt:   null,
+    };
+    this._save();
+    return { success: true };
+  }
+
+  endPresentation() {
+    this.session.presentation = {
+      ...this.session.presentation,
+      status:  'ended',
+      endedAt: new Date().toISOString(),
+    };
+    for (const q of this.session.questions) q.locked = true;
+    this._save();
+    this._saveResultsSnapshot();
+    return { success: true };
+  }
+
   // ── voting ─────────────────────────────────────────────────────────────────
 
-  vote(questionId, optionIndex, clientId, fingerprint) {
+  /**
+   * Cast a vote. With Google auth, each account gets exactly ONE vote per
+   * question — no changing. Without Google auth, fingerprint/clientId is used
+   * and the same once-only rule applies.
+   */
+  vote(questionId, optionIndex, clientId, fingerprint, googleId) {
     const q = this.getQuestion(questionId);
     if (!q)                                           return { success: false, error: 'Question not found' };
     if (this.session.activeQuestionId !== questionId) return { success: false, error: 'Question is not active' };
     if (q.locked)                                     return { success: false, error: 'Voting is locked' };
+    if (this.session.presentation?.status !== 'active')
+                                                      return { success: false, error: 'Voting is not open yet' };
     if (optionIndex < 0 || optionIndex >= q.options.length)
                                                       return { success: false, error: 'Invalid option' };
 
-    const fpIdx  = fingerprint ? (q.fingerprintVotes[fingerprint] ?? undefined) : undefined;
-    const cidIdx = q.clientVotes[clientId];
-    const prevIdx = fpIdx !== undefined ? fpIdx : cidIdx;
-
-    if (prevIdx !== undefined) {
-      const prevOpt = q.options[prevIdx];
-      q.votes[prevOpt] = Math.max(0, (q.votes[prevOpt] || 0) - 1);
+    if (googleId) {
+      if (q.googleVotes[googleId] !== undefined)
+        return { success: false, error: 'already_voted', votedIndex: q.googleVotes[googleId] };
+      q.googleVotes[googleId] = optionIndex;
+    } else {
+      const fpIdx  = fingerprint ? (q.fingerprintVotes[fingerprint] ?? undefined) : undefined;
+      const cidIdx = q.clientVotes[clientId];
+      if (fpIdx !== undefined || cidIdx !== undefined)
+        return { success: false, error: 'already_voted' };
+      q.clientVotes[clientId] = optionIndex;
+      if (fingerprint) q.fingerprintVotes[fingerprint] = optionIndex;
     }
 
-    const newOpt = q.options[optionIndex];
-    q.votes[newOpt] = (q.votes[newOpt] || 0) + 1;
-
-    q.clientVotes[clientId] = optionIndex;
-    if (fingerprint) q.fingerprintVotes[fingerprint] = optionIndex;
-
+    q.votes[q.options[optionIndex]] = (q.votes[q.options[optionIndex]] || 0) + 1;
     this._save();
-    return { success: true, votes: q.votes, totalVotes: Object.values(q.votes).reduce((a, b) => a + b, 0) };
+
+    return {
+      success:    true,
+      votes:      q.votes,
+      totalVotes: Object.values(q.votes).reduce((a, b) => a + b, 0),
+    };
   }
 
-  getClientVotes(clientId, fingerprint) {
+  getClientVotes(clientId, fingerprint, googleId) {
     const result = {};
     for (const q of this.session.questions) {
+      if (googleId && q.googleVotes[googleId] !== undefined) {
+        result[q.id] = q.googleVotes[googleId];
+        continue;
+      }
       const fpIdx  = fingerprint ? (q.fingerprintVotes?.[fingerprint] ?? undefined) : undefined;
       const cidIdx = q.clientVotes[clientId];
       const idx    = fpIdx !== undefined ? fpIdx : cidIdx;
       if (idx !== undefined) result[q.id] = idx;
     }
     return result;
+  }
+
+  // ── results export ─────────────────────────────────────────────────────────
+
+  getResultsCSV() {
+    const rows = ['Question,Option,Votes,Percentage'];
+    for (const q of this.session.questions) {
+      const total = Object.values(q.votes).reduce((a, b) => a + b, 0);
+      for (const opt of q.options) {
+        const count = q.votes[opt] || 0;
+        const pct   = total > 0 ? Math.round(count / total * 100) : 0;
+        rows.push(`"${q.title.replace(/"/g,'""')}","${opt.replace(/"/g,'""')}",${count},${pct}%`);
+      }
+    }
+    return rows.join('\n');
   }
 
   // ── question navigation ────────────────────────────────────────────────────
@@ -265,18 +349,13 @@ class Store {
     for (const opt of q.options) q.votes[opt] = 0;
     q.clientVotes      = {};
     q.fingerprintVotes = {};
+    q.googleVotes      = {};
     this._save();
     return { success: true, votes: q.votes };
   }
 
   addQuestion(title, options) {
-    const q = {
-      id: genId(), title, options,
-      votes:            Object.fromEntries(options.map(o => [o, 0])),
-      clientVotes:      {},
-      fingerprintVotes: {},
-      locked:           false,
-    };
+    const q = makeQuestion(title, options);
     this.session.questions.push(q);
     this._save();
     return this._toPublic(q);
@@ -288,9 +367,7 @@ class Store {
     const newVotes = Object.fromEntries(options.map(o => [o, q.votes[o] || 0]));
     const newClientVotes = {};
     for (const [cid, optIdx] of Object.entries(q.clientVotes)) {
-      if (optIdx < options.length && q.options[optIdx] === options[optIdx]) {
-        newClientVotes[cid] = optIdx;
-      }
+      if (optIdx < options.length && q.options[optIdx] === options[optIdx]) newClientVotes[cid] = optIdx;
     }
     q.title = title; q.options = options; q.votes = newVotes; q.clientVotes = newClientVotes;
     this._save();

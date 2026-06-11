@@ -95,9 +95,28 @@
     @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
     #waiting-overlay h1 { font-size: 2rem; font-weight: 700; color: #111827; }
     #waiting-overlay p  { color: #6b7280; font-size: 1rem; }
+
+    /* ── Ended overlay ───────────────────────────────────────────────────── */
+    #ended-overlay {
+      position: absolute; inset: 0; background: #fff;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.25rem; z-index: 50;
+    }
+    #ended-overlay.visible { display: flex; }
+    #ended-overlay .icon { font-size: 4rem; }
+    #ended-overlay h1 { font-size: 2rem; font-weight: 700; color: #111827; }
+    #ended-overlay p  { color: #6b7280; font-size: 1rem; }
   </style>
 </head>
 <body>
+
+<!-- Ended overlay -->
+<div id="ended-overlay">
+  <div class="icon">🎉</div>
+  <h1>Thank you for participating!</h1>
+  <p id="ended-event-name"></p>
+</div>
 
 <!-- Waiting overlay -->
 <div id="waiting-overlay">
@@ -161,7 +180,11 @@ const eventNameFtr   = document.getElementById('event-name-footer');
   try {
     const cfg = await fetch('/api/config').then(r => r.json());
     if (cfg.event.primaryColor) document.documentElement.style.setProperty('--primary', cfg.event.primaryColor);
-    if (cfg.event.name)         eventNameFtr.textContent = cfg.event.name;
+    if (cfg.event.name) {
+      eventNameFtr.textContent = cfg.event.name;
+      const endedName = document.getElementById('ended-event-name');
+      if (endedName) endedName.textContent = cfg.event.name;
+    }
     if (cfg.event.logoUrl)      { const l = document.getElementById('header-logo'); l.src = cfg.event.logoUrl; l.style.display = 'block'; }
     roomCodeEl.textContent = cfg.roomCode;
     document.title = `Live Results — ${cfg.event.name || 'Charity Poll'}`;
@@ -187,7 +210,18 @@ function connectSocket() {
   socket.on('state', (state) => {
     publicState    = state;
     activeQuestion = state.questions.find(q => q.id === state.activeQuestionId) || null;
+    if (state.presentation?.status === 'ended') {
+      document.getElementById('ended-overlay').classList.add('visible');
+    }
     render();
+  });
+
+  socket.on('presentation-state', ({ status }) => {
+    if (status === 'ended') {
+      document.getElementById('ended-overlay').classList.add('visible');
+    } else {
+      document.getElementById('ended-overlay').classList.remove('visible');
+    }
   });
 
   socket.on('question-changed', ({ activeQuestionId, question }) => {

@@ -346,6 +346,21 @@
           </div>
           <div class="vote-meta" id="vote-meta"></div>
         </div>
+
+        <!-- Presentation controls -->
+        <div class="card" style="margin-top:0">
+          <div class="card-label">Presentation</div>
+          <div id="pres-status-bar" style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">
+            Status: <strong id="pres-status-text">Not started</strong>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="start-pres-btn">▶ Start Presentation</button>
+            <button class="btn btn-danger"  id="end-pres-btn"   style="display:none">⏹ End &amp; Lock Voting</button>
+          </div>
+          <a id="download-csv-btn" class="btn btn-outline" href="#" target="_blank"
+             style="margin-top:.4rem;text-decoration:none;">⬇ Download Results (CSV)</a>
+        </div>
+
       </div>
 
     </div>
@@ -440,6 +455,11 @@ const adminPanel     = document.getElementById('admin-panel');
 const connDot        = document.getElementById('conn-dot');
 const connStatus     = document.getElementById('conn-status');
 const participantEl  = document.getElementById('participant-count');
+// Presentation controls
+const startPresBtn   = document.getElementById('start-pres-btn');
+const endPresBtn     = document.getElementById('end-pres-btn');
+const presStatusText = document.getElementById('pres-status-text');
+const downloadCsvBtn = document.getElementById('download-csv-btn');
 // Setup controls
 const noActiveMsg    = document.getElementById('no-active-msg');
 const activeTitleEl  = document.getElementById('active-q-title');
@@ -495,6 +515,30 @@ function applyTheme(ev) {
   if (ev.logoUrl) { const l = document.getElementById('header-logo'); l.src = ev.logoUrl; l.style.display = 'block'; }
 }
 
+// ── Presentation controls ─────────────────────────────────────────────────────
+startPresBtn.addEventListener('click', () => {
+  if (!socket) return;
+  socket.emit('start-presentation');
+});
+
+endPresBtn.addEventListener('click', () => {
+  if (!socket) return;
+  if (!confirm('End the presentation? This will lock all voting and save the results.')) return;
+  socket.emit('end-presentation');
+});
+
+function renderPresStatus() {
+  const status = sessionState?.presentation?.status || 'idle';
+  const labels = { idle: 'Not started', active: 'Live 🟢', ended: 'Ended 🔒' };
+  presStatusText.textContent = labels[status] || status;
+  startPresBtn.style.display = status === 'idle'   ? 'inline-flex' : 'none';
+  endPresBtn.style.display   = status === 'active' ? 'inline-flex' : 'none';
+}
+
+function updateDownloadLink(password) {
+  downloadCsvBtn.href = `/api/results/export?pw=${encodeURIComponent(password)}`;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 loginBtn.addEventListener('click', () => connect(pwInput.value));
 pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') loginBtn.click(); });
@@ -546,7 +590,17 @@ function connect(password, silent = false) {
     }
   });
 
-  socket.on('admin-state', (state) => { sessionState = state; renderAll(); });
+  socket.on('admin-state', (state) => {
+    sessionState = state;
+    renderAll();
+    renderPresStatus();
+    updateDownloadLink(password);
+  });
+
+  socket.on('presentation-state', ({ status }) => {
+    if (sessionState) sessionState.presentation = { ...(sessionState.presentation || {}), status };
+    renderPresStatus();
+  });;
 
   socket.on('vote-update', ({ questionId, votes, totalVotes }) => {
     if (!sessionState) return;

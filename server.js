@@ -1,10 +1,14 @@
 require('dotenv').config();
 
-const express    = require('express');
-const http       = require('http');
-const { Server } = require('socket.io');
-const path       = require('path');
-const qrcode     = require('qrcode');
+const express        = require('express');
+const http           = require('http');
+const { Server }     = require('socket.io');
+const path           = require('path');
+const qrcode         = require('qrcode');
+const passport       = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session        = require('express-session');
+const MongoStore     = require('connect-mongo');
 
 const config = require('./config');
 const store  = require('./store');
@@ -17,41 +21,114 @@ const httpServer = http.createServer(app);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Page routes
+// ── Session middleware ────────────────────────────────────────────────────────
+
+const sessionMiddleware = session({
+  secret:            config.session.secret,
+  resave:            false,
+  saveUninitialized: false,
+  store: config.mongo.uri
+    ? MongoStore.create({ mongoUrl: config.mongo.uri, dbName: 'charity-poll', ttl: 7 * 24 * 3600 })
+    : undefined,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
+});
+
+app.use(sessionMiddleware);
+app.use(passport.initialize());
+app.use(passport.session());
+
+// ── Google OAuth strategy ─────────────────────────────────────────────────────
+
+if (config.google.clientId) {
+  const callbackUrl = config.google.callbackUrl ||
+    `${(config.server.baseUrl || 'http://localhost:3000')}/auth/google/callback`;
+
+  passport.use(new GoogleStrategy({
+    clientID:     config.google.clientId,
+    clientSecret: config.google.clientSecret,
+    callbackURL:  callbackUrl,
+  }, (_at, _rt, profile, done) => {
+    done(null, {
+      id:    profile.id,
+      name:  profile.displayName,
+      email: profile.emails?.[0]?.value  || '',
+      photo: profile.photos?.[0]?.value  || '',
+    });
+  }));
+}
+
+passport.serializeUser((user, done)   => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
+
+app.get('/auth/google', (req, res, next) => {
+  if (!config.google.clientId) return res.redirect('/join');
+  const code = req.query.code || '';
+  passport.authenticate('google', { scope: ['profile', 'email'], state: code })(req, res, next);
+});
+
+app.get('/auth/google/callback',
+  (req, res, next) => {
+    if (!config.google.clientId) return res.redirect('/join');
+    passport.authenticate('google', { failureRedirect: '/join' })(req, res, next);
+  },
+  (req, res) => {
+    const code = req.query.state || '';
+    res.redirect(`/join${code ? `?code=${code}` : ''}`);
+  }
+);
+
+app.get('/auth/logout', (req, res) => {
+  req.logout(() => res.redirect('/join'));
+});
+
+// ── Page routes ───────────────────────────────────────────────────────────────
+
 app.get('/',        (_req, res) => res.redirect('/admin'));
 app.get('/admin',   (_req, res) => res.sendFile(path.join(__dirname, 'public', 'admin',   'index.html')));
 app.get('/join',    (_req, res) => res.sendFile(path.join(__dirname, 'public', 'join',    'index.html')));
-app.get('/present', (_req, res) => res.redirect('/admin'));
+app.get('/present', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'present', 'index.html')));
 
-// Public event config (no secrets)
-app.get('/api/config', (_req, res) => {
+// ── API routes ────────────────────────────────────────────────────────────────
+
+app.get('/api/me', (req, res) => {
   res.json({
-    event:    config.event,
-    roomCode: store.getSession().roomCode,
+    user:              req.user || null,
+    googleAuthEnabled: !!config.google.clientId,
   });
 });
 
-// QR code image as data-URL + join URL
+app.get('/api/config', (_req, res) => {
+  res.json({ event: config.event, roomCode: store.getSession().roomCode });
+});
+
 app.get('/api/qr', async (req, res) => {
   const session  = store.getSession();
   const proto    = req.headers['x-forwarded-proto'] || req.protocol;
   const host     = req.headers['x-forwarded-host']  || req.get('host');
   const baseUrl  = (config.server.baseUrl || `${proto}://${host}`).replace(/\/+$/, '');
   const joinUrl  = `${baseUrl}/join?code=${session.roomCode}`;
-
   try {
-    const qrDataUrl = await qrcode.toDataURL(joinUrl, {
-      width:  280,
-      margin: 1,
-      color:  { dark: '#000000', light: '#ffffff' },
-    });
+    const qrDataUrl = await qrcode.toDataURL(joinUrl, { width: 280, margin: 1, color: { dark: '#000000', light: '#ffffff' } });
     res.json({ qrDataUrl, joinUrl, roomCode: session.roomCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── Socket.IO ────────────────────────────────────────────────────────────────
+app.get('/api/results/export', (req, res) => {
+  const pw = req.query.pw || req.headers['x-admin-password'];
+  if (pw !== config.admin.password) return res.status(401).json({ error: 'Unauthorized' });
+  const csv      = store.getResultsCSV();
+  const date     = new Date().toISOString().split('T')[0];
+  const filename = `results-${store.getSession().roomCode}-${date}.csv`;
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csv);
+});
+
+// ── Socket.IO ─────────────────────────────────────────────────────────────────
 
 const io = new Server(httpServer, {
   cors:         { origin: '*' },
@@ -59,59 +136,74 @@ const io = new Server(httpServer, {
   pingInterval: 25000,
 });
 
-// Middleware: stamp each socket with its admin status on every connection/reconnect
+// Share express session with socket.io and extract Google user
 io.use((socket, next) => {
-  socket.isAdmin = socket.handshake.auth?.password === config.admin.password;
-  next();
+  sessionMiddleware(socket.request, {}, (err) => {
+    if (err) return next(err);
+    const passportUser = socket.request.session?.passport?.user;
+    socket.googleUser  = passportUser || null;
+    socket.isAdmin     = socket.handshake.auth?.password === config.admin.password;
+    next();
+  });
 });
 
 io.on('connection', (socket) => {
-  // ── join / leave tracking ──────────────────────────────────────────────────
+
   store.addParticipant(socket.id);
   io.emit('participant-count', { count: store.getParticipantCount() });
 
-  // ── initial state ─────────────────────────────────────────────────────────
   socket.emit('state', store.getPublicState());
 
   if (socket.isAdmin) {
-    socket.emit('auth-result',  { success: true });
-    socket.emit('admin-state',  store.getFullState());
+    socket.emit('auth-result', { success: true });
+    socket.emit('admin-state', store.getFullState());
   } else if (socket.handshake.auth?.password) {
-    // Attempted but wrong password
     socket.emit('auth-result', { success: false });
   }
 
-  // ── attendee events ───────────────────────────────────────────────────────
+  // ── attendee events ──────────────────────────────────────────────────────
 
   socket.on('check-votes', ({ clientId, fingerprint }) => {
     if (!clientId) return;
-    socket.emit('vote-history', { votes: store.getClientVotes(clientId, fingerprint || null) });
+    const googleId = socket.googleUser?.id || null;
+    socket.emit('vote-history', {
+      votes: store.getClientVotes(clientId, fingerprint || null, googleId),
+      user:  socket.googleUser,
+    });
   });
 
   socket.on('vote', ({ questionId, optionIndex, clientId, fingerprint }) => {
     if (!clientId || typeof optionIndex !== 'number') return;
-    const result = store.vote(questionId, optionIndex, clientId, fingerprint || null);
+    const googleId = socket.googleUser?.id || null;
+    const result   = store.vote(questionId, optionIndex, clientId, fingerprint || null, googleId);
     if (result.success) {
-      io.emit('vote-update', {
-        questionId,
-        votes:      result.votes,
-        totalVotes: result.totalVotes,
-      });
+      io.emit('vote-update', { questionId, votes: result.votes, totalVotes: result.totalVotes });
     } else {
-      socket.emit('vote-error', { message: result.error });
+      socket.emit('vote-error', { message: result.error, votedIndex: result.votedIndex });
     }
   });
 
-  // ── admin-only events ─────────────────────────────────────────────────────
+  // ── admin-only events ────────────────────────────────────────────────────
+
+  socket.on('start-presentation', () => {
+    if (!socket.isAdmin) return;
+    store.startPresentation();
+    io.emit('presentation-state', { status: 'active' });
+    broadcastAdminState();
+  });
+
+  socket.on('end-presentation', () => {
+    if (!socket.isAdmin) return;
+    store.endPresentation();
+    io.emit('presentation-state', { status: 'ended' });
+    broadcastAdminState();
+  });
 
   socket.on('activate-question', ({ questionId }) => {
     if (!socket.isAdmin) return;
     const result = store.activateQuestion(questionId);
     if (result.success) {
-      io.emit('question-changed', {
-        activeQuestionId: questionId,
-        question:         result.question,
-      });
+      io.emit('question-changed', { activeQuestionId: questionId, question: result.question });
       broadcastAdminState();
     }
   });
@@ -127,10 +219,7 @@ io.on('connection', (socket) => {
     if (!socket.isAdmin) return;
     const result = store.nextQuestion();
     if (result.success) {
-      io.emit('question-changed', {
-        activeQuestionId: store.getSession().activeQuestionId,
-        question:         result.question,
-      });
+      io.emit('question-changed', { activeQuestionId: store.getSession().activeQuestionId, question: result.question });
       broadcastAdminState();
     }
   });
@@ -139,10 +228,7 @@ io.on('connection', (socket) => {
     if (!socket.isAdmin) return;
     const result = store.prevQuestion();
     if (result.success) {
-      io.emit('question-changed', {
-        activeQuestionId: store.getSession().activeQuestionId,
-        question:         result.question,
-      });
+      io.emit('question-changed', { activeQuestionId: store.getSession().activeQuestionId, question: result.question });
       broadcastAdminState();
     }
   });
@@ -171,7 +257,6 @@ io.on('connection', (socket) => {
     const clean = options.map(o => String(o).trim()).filter(Boolean);
     if (clean.length < 2) return;
     store.updateQuestion(id, title.trim(), clean);
-    // Broadcast updated public state so attendees see fresh options
     io.emit('state', store.getPublicState());
     broadcastAdminState();
   });
@@ -181,9 +266,7 @@ io.on('connection', (socket) => {
     store.deleteQuestion(id);
     io.emit('question-changed', {
       activeQuestionId: store.getSession().activeQuestionId,
-      question:         store.getActiveQuestion()
-                          ? store.getPublicState().questions.find(q => q.id === store.getSession().activeQuestionId)
-                          : null,
+      question: store.getActiveQuestion() ? store.getPublicState().questions.find(q => q.id === store.getSession().activeQuestionId) : null,
     });
     broadcastAdminState();
   });
@@ -207,7 +290,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Send the full admin state to every connected admin socket
 function broadcastAdminState() {
   const state = store.getFullState();
   for (const [, s] of io.sockets.sockets) {
@@ -215,9 +297,7 @@ function broadcastAdminState() {
   }
 }
 
-// ── start ────────────────────────────────────────────────────────────────────
-// Wait for store to finish connecting to MongoDB (or loading from file) before
-// accepting requests — ensures session data is available on the first request.
+// ── start ─────────────────────────────────────────────────────────────────────
 
 const port = config.server.port;
 store.ready.then(() => {
@@ -230,6 +310,7 @@ store.ready.then(() => {
     console.log(`    Join:       http://localhost:${port}/join`);
     console.log(`    Present:    http://localhost:${port}/present`);
     console.log(`    Room code:  ${roomCode}`);
+    console.log(`    Google auth: ${config.google.clientId ? 'enabled' : 'disabled (set GOOGLE_CLIENT_ID to enable)'}`);
     console.log('');
   });
 }).catch(err => {
