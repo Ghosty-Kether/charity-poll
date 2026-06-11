@@ -8,11 +8,11 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
-    "connect-mongo": "^6.0.0",
+    "connect-mongo": "^5.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.19.0",
-    "mongodb": "^7.2.0",
+    "mongodb": "^6.0.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "qrcode": "^1.5.4",
